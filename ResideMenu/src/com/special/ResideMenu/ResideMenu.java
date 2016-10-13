@@ -5,11 +5,18 @@ import android.content.Context;
 import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.graphics.Rect;
-import android.os.Build;
 import android.util.DisplayMetrics;
-import android.view.*;
+import android.view.KeyCharacterMap;
+import android.view.KeyEvent;
+import android.view.LayoutInflater;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.ViewGroup;
 import android.view.animation.AnimationUtils;
-import android.widget.*;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.RelativeLayout;
 
 import com.nineoldandroids.animation.Animator;
 import com.nineoldandroids.animation.AnimatorSet;
@@ -66,8 +73,17 @@ public class ResideMenu extends FrameLayout {
     private OnMenuListener menuListener;
     private float lastRawX;
     private boolean isInIgnoredView = false;
+    /**
+     * 方向
+     */
     private int scaleDirection = DIRECTION_LEFT;
+    /**
+     * 按下状态
+     */
     private int pressedState = PRESSED_DOWN;
+    /**
+     * 禁止滑动的方向列表
+     */
     private List<Integer> disabledSwipeDirection = new ArrayList<Integer>();
     // Valid scale factor is between 0.0f and 1.0f.
     private float mScaleValue = 0.5f;
@@ -115,7 +131,6 @@ public class ResideMenu extends FrameLayout {
 
         imageViewShadow = (ImageView) findViewById(R.id.iv_shadow);
         imageViewBackground = (ImageView) findViewById(R.id.iv_background);
-
         RelativeLayout menuHolder = (RelativeLayout) findViewById(R.id.sv_menu_holder);
         menuHolder.addView(scrollViewLeftMenu);
         menuHolder.addView(scrollViewRightMenu);
@@ -338,15 +353,13 @@ public class ResideMenu extends FrameLayout {
      * Show the menu;
      */
     public void openMenu(int direction) {
-
         setScaleDirection(direction);
-
         isOpened = true;
         AnimatorSet scaleDown_activity = buildScaleDownAnimation(viewActivity, mScaleValue, mScaleValue);
         AnimatorSet scaleDown_shadow = buildScaleDownAnimation(imageViewShadow,
                 mScaleValue + shadowAdjustScaleX, mScaleValue + shadowAdjustScaleY);
         AnimatorSet alpha_menu = buildMenuAnimation(scrollViewMenu, 1.0f);
-        scaleDown_shadow.addListener(animationListener);
+        scaleDown_activity.addListener(animationListener);
         scaleDown_activity.playTogether(scaleDown_shadow);
         scaleDown_activity.playTogether(alpha_menu);
         scaleDown_activity.start();
@@ -356,7 +369,6 @@ public class ResideMenu extends FrameLayout {
      * Close the menu;
      */
     public void closeMenu() {
-
         isOpened = false;
         AnimatorSet scaleUp_activity = buildScaleUpAnimation(viewActivity, 1.0f, 1.0f);
         AnimatorSet scaleUp_shadow = buildScaleUpAnimation(imageViewShadow, 1.0f, 1.0f);
@@ -382,23 +394,23 @@ public class ResideMenu extends FrameLayout {
 
     private void setScaleDirection(int direction) {
 
-        int screenWidth = getScreenWidth();
-        float pivotX;
-        float pivotY = getScreenHeight() * 0.5f;
+        int screenWidth = getScreenWidth();//获取屏幕宽度
+        float pivotX;//屏幕宽度坐标点
+        float pivotY = getScreenHeight() * 0.5f;//屏幕高度中点
 
         if (direction == DIRECTION_LEFT) {
             scrollViewMenu = scrollViewLeftMenu;
-            pivotX = screenWidth * 1.5f;
+            pivotX = screenWidth * 1.5f;//X轴中心点位于屏幕右侧1.5f位置
         } else {
             scrollViewMenu = scrollViewRightMenu;
-            pivotX = screenWidth * -0.5f;
+            pivotX = screenWidth * -0.5f;//X轴中心点位于屏幕左侧0.5f位置
         }
 
-        ViewHelper.setPivotX(viewActivity, pivotX);
-        ViewHelper.setPivotY(viewActivity, pivotY);
-        ViewHelper.setPivotX(imageViewShadow, pivotX);
-        ViewHelper.setPivotY(imageViewShadow, pivotY);
-        scaleDirection = direction;
+        ViewHelper.setPivotX(viewActivity, pivotX);//设置子View中心点X的坐标
+        ViewHelper.setPivotY(viewActivity, pivotY);//设置子View中心点Y的坐标
+        ViewHelper.setPivotX(imageViewShadow, pivotX);//设置背景ImageView的中心点X坐标
+        ViewHelper.setPivotY(imageViewShadow, pivotY);//设置背景ImageView的中心点Y坐标
+        scaleDirection = direction;//设置方向(左/右)
     }
 
     /**
@@ -463,18 +475,15 @@ public class ResideMenu extends FrameLayout {
      * @return
      */
     private AnimatorSet buildScaleDownAnimation(View target, float targetScaleX, float targetScaleY) {
-
         AnimatorSet scaleDown = new AnimatorSet();
         scaleDown.playTogether(
                 ObjectAnimator.ofFloat(target, "scaleX", targetScaleX),
                 ObjectAnimator.ofFloat(target, "scaleY", targetScaleY)
         );
-
         if (mUse3D) {
             int angle = scaleDirection == DIRECTION_LEFT ? -ROTATE_Y_ANGLE : ROTATE_Y_ANGLE;
             scaleDown.playTogether(ObjectAnimator.ofFloat(target, "rotationY", angle));
         }
-
         scaleDown.setInterpolator(AnimationUtils.loadInterpolator(activity,
                 android.R.anim.decelerate_interpolator));
         scaleDown.setDuration(250);
@@ -546,6 +555,8 @@ public class ResideMenu extends FrameLayout {
     /**
      * If the motion event was relative to the view
      * which in ignored view list,return true;
+     * <p>
+     * 如果运动方向的列表被视图替换,返回true;
      *
      * @param ev
      * @return
@@ -553,13 +564,18 @@ public class ResideMenu extends FrameLayout {
     private boolean isInIgnoredView(MotionEvent ev) {
         Rect rect = new Rect();
         for (View v : ignoredViews) {
-            v.getGlobalVisibleRect(rect);
-            if (rect.contains((int) ev.getX(), (int) ev.getY()))
+            v.getGlobalVisibleRect(rect);//获取当前View所占区域的矩形
+            if (rect.contains((int) ev.getX(), (int) ev.getY()))//判断当前触点是否在当前View的矩形区域内
                 return true;
         }
         return false;
     }
 
+    /**
+     * 设置子View的中心点和方向
+     *
+     * @param currentRawX
+     */
     private void setScaleDirectionByRawX(float currentRawX) {
         if (currentRawX < lastRawX)
             setScaleDirection(DIRECTION_RIGHT);
@@ -567,6 +583,12 @@ public class ResideMenu extends FrameLayout {
             setScaleDirection(DIRECTION_LEFT);
     }
 
+    /**
+     * 根据移动的位置确定缩放系数
+     *
+     * @param currentRawX
+     * @return
+     */
     private float getTargetScale(float currentRawX) {
         float scaleFloatX = ((currentRawX - lastRawX) / getScreenWidth()) * 0.75f;
         scaleFloatX = scaleDirection == DIRECTION_RIGHT ? -scaleFloatX : scaleFloatX;
@@ -579,51 +601,55 @@ public class ResideMenu extends FrameLayout {
 
     private float lastActionDownX, lastActionDownY;
 
+    /**
+     * ev.getRawX()获取X的坐标到屏幕左上角的X轴距离
+     * ev.getX()获取X的坐标到控件左上角的X轴距离
+     *
+     * @param ev
+     * @return
+     */
     @Override
     public boolean dispatchTouchEvent(MotionEvent ev) {
-        float currentActivityScaleX = ViewHelper.getScaleX(viewActivity);
-        if (currentActivityScaleX == 1.0f)
-            setScaleDirectionByRawX(ev.getRawX());
-
+        float currentActivityScaleX = ViewHelper.getScaleX(viewActivity);//获取子View缩放的比例
+        if (currentActivityScaleX == 1.0f)//未缩放
+            setScaleDirectionByRawX(ev.getRawX());//初始化子View中心点以及方向
         switch (ev.getAction()) {
             case MotionEvent.ACTION_DOWN:
-                lastActionDownX = ev.getX();
-                lastActionDownY = ev.getY();
-                isInIgnoredView = isInIgnoredView(ev) && !isOpened();
-                pressedState = PRESSED_DOWN;
+                lastActionDownX = ev.getX();//记录按下点的X坐标
+                lastActionDownY = ev.getY();//记录按下点的Y坐标
+                isInIgnoredView = isInIgnoredView(ev) && !isOpened();//菜单关闭并且判断坐标点是否在不可滑动的视图内
+                pressedState = PRESSED_DOWN;//记录按下的状态
                 break;
-
             case MotionEvent.ACTION_MOVE:
-                if (isInIgnoredView || isInDisableDirection(scaleDirection))
+                if (isInIgnoredView || isInDisableDirection(scaleDirection))//判断当前区域是否可滑动,或当前方向是否可滑动
                     break;
 
                 if (pressedState != PRESSED_DOWN &&
-                        pressedState != PRESSED_MOVE_HORIZONTAL)
+                        pressedState != PRESSED_MOVE_HORIZONTAL)//若当前状态不是按下或者横向移动跳出
                     break;
 
-                int xOffset = (int) (ev.getX() - lastActionDownX);
-                int yOffset = (int) (ev.getY() - lastActionDownY);
+                int xOffset = (int) (ev.getX() - lastActionDownX);//X坐标移动的距离
+                int yOffset = (int) (ev.getY() - lastActionDownY);//Y坐标移动的距离
 
-                if (pressedState == PRESSED_DOWN) {
+                if (pressedState == PRESSED_DOWN) {//第一次移动X轴方向移动距离大于50px且Y轴方向移动距离小于25px的时候方可移动
                     if (yOffset > 25 || yOffset < -25) {
-                        pressedState = PRESSED_MOVE_VERTICAL;
+                        pressedState = PRESSED_MOVE_VERTICAL;//若竖直方向移动距离过快,则改变状态
                         break;
                     }
                     if (xOffset < -50 || xOffset > 50) {
-                        pressedState = PRESSED_MOVE_HORIZONTAL;
+                        pressedState = PRESSED_MOVE_HORIZONTAL;//水平方向移动位置达到标准,改变状态
                         ev.setAction(MotionEvent.ACTION_CANCEL);
                     }
                 } else if (pressedState == PRESSED_MOVE_HORIZONTAL) {
-                    if (currentActivityScaleX < 0.95)
+                    if (currentActivityScaleX < 0.95)//当子View的缩放系数小于0.95时显示侧面菜单
                         showScrollViewMenu(scrollViewMenu);
 
                     float targetScale = getTargetScale(ev.getRawX());
                     if (mUse3D) {
                         int angle = scaleDirection == DIRECTION_LEFT ? -ROTATE_Y_ANGLE : ROTATE_Y_ANGLE;
-                        angle *= (1 - targetScale) * 2;
-                        ViewHelper.setRotationY(viewActivity, angle);
-
-                        ViewHelper.setScaleX(imageViewShadow, targetScale - shadowAdjustScaleX);
+                        angle *= (1 - targetScale) * 2;//计算旋转角度
+                        ViewHelper.setRotationY(viewActivity, angle);//设置沿着Y轴旋转
+                        ViewHelper.setScaleX(imageViewShadow, targetScale - shadowAdjustScaleX);//设置阴影的缩放
                         ViewHelper.setScaleY(imageViewShadow, targetScale - shadowAdjustScaleY);
                     } else {
                         ViewHelper.setScaleX(imageViewShadow, targetScale + shadowAdjustScaleX);
@@ -631,7 +657,7 @@ public class ResideMenu extends FrameLayout {
                     }
                     ViewHelper.setScaleX(viewActivity, targetScale);
                     ViewHelper.setScaleY(viewActivity, targetScale);
-                    ViewHelper.setAlpha(scrollViewMenu, (1 - targetScale) * 2.0f);
+                    ViewHelper.setAlpha(scrollViewMenu, (1 - targetScale) * 2.0f);//设置菜单的透明度
 
                     lastRawX = ev.getRawX();
                     return true;
@@ -645,7 +671,7 @@ public class ResideMenu extends FrameLayout {
                 if (pressedState != PRESSED_MOVE_HORIZONTAL) break;
 
                 pressedState = PRESSED_DONE;
-                if (isOpened()) {
+                if (isOpened()) {//抬起手指后根据当前的位置进行展开或者收缩
                     if (currentActivityScaleX > 0.56f)
                         closeMenu();
                     else
